@@ -30,6 +30,7 @@ https://github.com/497672776/ulauncher-rag-retriever.git
 ### 方式一：自动安装脚本（推荐）
 
 ```bash
+cd ~/.local/share/ulauncher/extensions/com.github.497672776.ulauncher-rag-retriever
 chmod +x setup.sh
 ./setup.sh 你的用户名
 ```
