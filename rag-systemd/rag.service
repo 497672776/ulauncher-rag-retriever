@@ -9,13 +9,13 @@ Requires=ollama.service
 Type=simple
 User=liudecheng
 Group=liudecheng
-ExecStart=/home/liudecheng/.local/share/ulauncher/extensions/ulauncher-rag-retriever/rag-systemd/start_service.sh
+ExecStart=/home/liudecheng/.local/share/ulauncher/extensions/com.github.497672776.ulauncher-rag-retriever/rag-systemd/start_service.sh
 
 # 工作目录
-WorkingDirectory=/home/liudecheng/.local/share/ulauncher/extensions/ulauncher-rag-retriever/rag-systemd
+WorkingDirectory=/home/liudecheng/.local/share/ulauncher/extensions/com.github.497672776.ulauncher-rag-retriever/rag-systemd
 
 # 环境变量
-Environment=PYTHONPATH=/home/liudecheng/.local/share/ulauncher/extensions/ulauncher-rag-retriever/rag-systemd
+Environment=PYTHONPATH=.
 Environment=PYTHONUNBUFFERED=1
 
 # 重启策略

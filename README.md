@@ -17,20 +17,38 @@
 
 ## 安装步骤
 
-1. 安装虚拟环境
+1. 安装虚拟环境和依赖
 ```bash
-cd ~/.local/share/ulauncher/extensions/ulauncher-rag-retriever
+cd ~/.local/share/ulauncher/extensions/com.github.497672776.ulauncher-rag-retriever
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-2. 将插件复制到Ulauncher插件目录
+2. 配置后台服务
+   - 修改systemd服务路径：将用户名改为你自己的用户名
+   ```ini
+   # 在 rag-systemd/rag.service 文件中修改
+   ExecStart=/home/你的用户名/.local/share/ulauncher/extensions/com.github.497672776.ulauncher-rag-retriever/rag-systemd/start_service.sh
+   WorkingDirectory=/home/你的用户名/.local/share/ulauncher/extensions/com.github.497672776.ulauncher-rag-retriever/rag-systemd
+   ```
+
+3. 启动后台服务
 ```bash
-cp -r ulauncher-rag-retriever ~/.local/share/ulauncher/extensions/
+cd rag-systemd
+sudo cp rag.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl start rag
+sudo systemctl enable rag
 ```
 
-3. 重启Ulauncher或重新加载插件
+4. 测试后台服务
+   - 数据库路径: `~/.local/share/ulauncher/extensions/com.github.497672776.ulauncher-rag-retriever/rag-systemd/data`
+   - 放入测试文件到data目录中
+   - 查看日志: `sudo journalctl -u rag -f`
+   - 等待向量库生成完成
+
+5. 重启Ulauncher或重新加载插件
 
 ## 使用方法
 
