@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+
+
+# Virtual Environment
+venv/
+
+
+# claude
+.claude/
+CLAUDE.md
+
+# test
+test*.py
+
+search_script.py
+result_formatter.py
+demo_chroma_db*
+
+

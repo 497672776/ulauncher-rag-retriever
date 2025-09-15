@@ -1,0 +1,22 @@
+# RAG Retriever Plugin 依赖包（精简版）
+
+# 核心检索功能
+llama-index>=0.9.0
+llama-index-vector-stores-chroma
+llama-index-embeddings-ollama
+chromadb>=0.4.0
+
+# BM25检索
+rank-bm25>=0.2.0
+
+# 中文分词
+jieba>=0.42.0
+
+# 基础工具
+pathlib
+typing-extensions
+
+# 文档处理
+python-docx
+docx2txt
+reportlab

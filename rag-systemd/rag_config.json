@@ -1,0 +1,12 @@
+{
+  "watch_dir": "./data",
+  "model_name": "bge-m3:latest",
+  "log_level": "INFO",
+  "python_venv": "../venv/bin/python",
+  "_comments": {
+    "watch_dir": "监控目录路径 - 支持相对路径（基于脚本目录）、绝对路径、~/用户目录",
+    "model_name": "Ollama嵌入模型名称 - 确保模型已下载：ollama pull bge-m3:latest",
+    "log_level": "日志级别 - DEBUG/INFO/WARNING/ERROR",
+    "python_venv": "Python虚拟环境路径 - 指向虚拟环境中的python可执行文件"
+  }
+}

@@ -1,0 +1,33 @@
+{
+    "required_api_version": "2",
+    "name": "RAG Document Search",
+    "description": "基于向量和关键词的智能文档检索插件",
+    "developer_name": "RAG Team",
+    "icon": "images/icon.png",
+    "options": {
+        "query_debounce": 0.1
+    },
+    "preferences": [
+        {
+            "id": "rag_kw",
+            "type": "keyword",
+            "name": "RAG Search",
+            "description": "RAG文档检索关键词",
+            "default_value": "r"
+        },
+        {
+            "id": "max_results",
+            "type": "input",
+            "name": "每页结果数量",
+            "description": "每页显示的搜索结果数量",
+            "default_value": "9"
+        },
+        {
+            "id": "venv_python",
+            "type": "input",
+            "name": "Python虚拟环境路径",
+            "description": "RAG搜索脚本使用的Python虚拟环境可执行文件路径,输入相对路径则是相对于插件目录",
+            "default_value": "venv/bin/python"
+        }
+    ]
+}
