@@ -25,7 +25,7 @@ TimeoutStartSec=60
 TimeoutStopSec=30
 
 # 资源限制
-MemoryLimit=1G
+MemoryMax=2G
 CPUQuota=100%
 TasksMax=50
 
