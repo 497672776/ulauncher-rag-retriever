@@ -17,6 +17,16 @@
 
 ## 安装步骤
 
+### 第一步：添加插件到Ulauncher
+
+在Ulauncher插件界面中，点击"Add extension"，输入以下URL：
+
+```
+https://github.com/497672776/ulauncher-rag-retriever.git
+```
+
+![添加插件](images/add_extension.png)
+
 ### 方式一：自动安装脚本（推荐）
 
 ```bash
