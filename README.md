@@ -17,6 +17,22 @@
 
 ## 安装步骤
 
+### 方式一：自动安装脚本（推荐）
+
+```bash
+chmod +x setup.sh
+./setup.sh 你的用户名
+```
+
+例如：
+```bash
+./setup.sh liudecheng
+```
+
+脚本会自动完成虚拟环境安装、依赖安装、服务配置和启动。
+
+### 方式二：手动安装
+
 1. 安装虚拟环境和依赖
 ```bash
 cd ~/.local/share/ulauncher/extensions/com.github.497672776.ulauncher-rag-retriever
