@@ -40,7 +40,7 @@ echo "🔧 3. 启动后台服务..."
 cd rag-systemd
 sudo cp rag.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl start rag
+sudo systemctl restart rag
 sudo systemctl enable rag
 
 echo "✅ 安装完成！"

@@ -65,7 +65,7 @@ pip install -r requirements.txt
 cd rag-systemd
 sudo cp rag.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl start rag
+sudo systemctl restart rag
 sudo systemctl enable rag
 ```
 
