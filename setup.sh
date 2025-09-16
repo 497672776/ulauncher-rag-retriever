@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# RAG检索插件安装脚本
+# 文档检索插件安装脚本
 # 用法: ./setup.sh <用户名>
 
 if [ $# -eq 0 ]; then
@@ -12,7 +12,7 @@ fi
 USERNAME=$1
 EXT_DIR="/home/$USERNAME/.local/share/ulauncher/extensions/com.github.497672776.ulauncher-rag-retriever"
 
-echo "🚀 开始安装RAG检索插件..."
+echo "🚀 开始安装文档检索插件..."
 echo "👤 用户名: $USERNAME"
 echo "📁 安装目录: $EXT_DIR"
 
@@ -31,21 +31,21 @@ source venv/bin/activate
 pip install -r requirements.txt
 
 echo "⚙️ 2. 配置后台服务..."
-# 修改rag.service文件中的用户名
-sed -i "s|/home/[^/]*/|/home/$USERNAME/|g" rag-systemd/rag.service
-sed -i "s|User=.*|User=$USERNAME|g" rag-systemd/rag.service
-sed -i "s|Group=.*|Group=$USERNAME|g" rag-systemd/rag.service
+# 修改document-indexer.service文件中的用户名
+sed -i "s|/home/[^/]*/|/home/$USERNAME/|g" rag-systemd/document-indexer.service
+sed -i "s|User=.*|User=$USERNAME|g" rag-systemd/document-indexer.service
+sed -i "s|Group=.*|Group=$USERNAME|g" rag-systemd/document-indexer.service
 
 echo "🔧 3. 启动后台服务..."
 cd rag-systemd
-sudo cp rag.service /etc/systemd/system/
+sudo cp document-indexer.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl restart rag
-sudo systemctl enable rag
+sudo systemctl restart document-indexer
+sudo systemctl enable document-indexer
 
 echo "✅ 安装完成！"
 echo ""
 echo "📋 下一步:"
 echo "1. 放入测试文件到: $EXT_DIR/rag-systemd/data"
-echo "2. 查看日志: sudo journalctl -u rag -f"
+echo "2. 查看日志: sudo journalctl -u document-indexer -f"
 echo "3. 等待向量库生成完成后即可使用Ulauncher"

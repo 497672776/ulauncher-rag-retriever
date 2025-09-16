@@ -4,9 +4,7 @@
 
 import os
 import pickle
-import json
-import time
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 # ChromaDB相关
 import chromadb
@@ -22,412 +20,314 @@ from rank_bm25 import BM25Okapi
 import jieba
 
 
-class RAGRetriever:
-    """轻量级RAG检索器"""
+class DocumentRetriever:
+    """轻量级文档检索器 - 负责文档搜索和相关性检索"""
     
-    def __init__(self, data_base_path: str):
-        self.data_base_path = os.path.expanduser(data_base_path)
+    def __init__(self, document_database_path: str):
+        self.document_database_root_path = os.path.expanduser(document_database_path)
         
-        # 数据路径
-        self.chroma_db_path = os.path.join(self.data_base_path, "chroma_db")
-        self.pickle_path = os.path.join(self.data_base_path, "models")
-        self.state_path = os.path.join(self.data_base_path, "state")
+        # 文档数据存储路径
+        self.vector_database_path = os.path.join(self.document_database_root_path, "chroma_db")
+        self.keyword_models_path = os.path.join(self.document_database_root_path, "keyword_model")
         
-        # 创建必要的目录结构
-        self._ensure_directories()
+        # 核心检索组件
+        self.chromadb_client = None
+        self.vector_document_store = None
+        self.vector_search_index = None
+        self.bm25_keyword_search_model = None
+        self.document_nodes_data = None
+        self.text_embedding_model = None
         
-        # 核心组件
-        self.chroma_client = None
-        self.vector_store = None
-        self.vector_index = None
-        self.bm25_model = None
-        self.nodes_data = None
-        self.embed_model = None
+        # 检索器状态管理
+        self._is_data_loaded = False
         
-        # 状态
-        self._loaded = False
-        self._last_version = None
-        
-    def _ensure_directories(self):
-        """确保所需的目录结构存在"""
-        directories = [
-            self.data_base_path,
-            self.chroma_db_path,
-            self.pickle_path,
-            self.state_path
+    def is_document_search_available(self) -> bool:
+        """检查文档检索系统是否可用且数据完整"""
+        # 检查文档检索所需的必要文件是否存在
+        essential_data_files = [
+            self.vector_database_path,
+            os.path.join(self.keyword_models_path, "bm25_model.pkl"),
+            os.path.join(self.keyword_models_path, "nodes_data.pkl")
         ]
         
-        for directory in directories:
-            try:
-                os.makedirs(directory, exist_ok=True)
-            except OSError as e:
-                # 如果创建失败，记录但不抛出异常，让后续的is_available检查处理
-                pass
-        
-    def is_available(self) -> bool:
-        """检查RAG系统是否可用"""
-        # 检查必要的文件是否存在
-        required_files = [
-            self.chroma_db_path,
-            os.path.join(self.pickle_path, "bm25_model.pkl"),
-            os.path.join(self.pickle_path, "nodes_data.pkl")
-        ]
-        
-        for file_path in required_files:
-            if not os.path.exists(file_path):
+        for essential_file_path in essential_data_files:
+            if not os.path.exists(essential_file_path):
                 return False
                 
         return True
         
-    def _check_version_change(self) -> bool:
-        """检查数据版本是否有变化"""
-        version_file = os.path.join(self.state_path, "data_version.json")
         
-        try:
-            if os.path.exists(version_file):
-                with open(version_file, 'r', encoding='utf-8') as f:
-                    version_data = json.load(f)
-                    current_version = version_data.get('version')
-                    
-                    if current_version != self._last_version:
-                        self._last_version = current_version
-                        return True
-        except:
-            pass
-            
-        return False
-        
-    def _lazy_load(self):
-        """延迟加载数据，只在需要时加载"""
-        if self._loaded and not self._check_version_change():
+    def _load_document_search_data_lazily(self):
+        """延迟加载文档检索数据，只在需要时加载以提高性能"""
+        if self._is_data_loaded:
             return
             
-        print("🔄 加载RAG数据...")
+        print("🔄 初始化文档检索数据...")
         
         try:
-            # 1. 设置嵌入模型
-            self._setup_embedding_model()
+            # 1. 初始化文本嵌入模型
+            self._initialize_text_embedding_model()
             
-            # 2. 加载向量存储
-            self._load_vector_store()
+            # 2. 加载向量文档存储
+            self._load_vector_document_store()
             
-            # 3. 加载BM25模型
-            self._load_bm25_model()
+            # 3. 加载BM25关键词检索模型
+            self._load_bm25_keyword_search_model()
             
-            self._loaded = True
-            print("✅ RAG数据加载完成")
+            self._is_data_loaded = True
+            print("✅ 文档检索数据初始化完成")
             
-        except Exception as e:
-            print(f"❌ RAG数据加载失败: {e}")
+        except Exception as initialization_error:
+            print(f"❌ 文档检索数据加载失败: {initialization_error}")
             raise
             
-    def _setup_embedding_model(self):
-        """设置嵌入模型"""
-        self.embed_model = OllamaEmbedding(
+    def _initialize_text_embedding_model(self):
+        """初始化和设置文本嵌入向量化模型"""
+        self.text_embedding_model = OllamaEmbedding(
             model_name="bge-m3:latest",
             base_url="http://localhost:11434",
             embed_batch_size=8,
             request_timeout=30,
         )
-        Settings.embed_model = self.embed_model
+        Settings.embed_model = self.text_embedding_model
         
-    def _load_vector_store(self):
-        """加载向量存储和索引"""
-        self.chroma_client = chromadb.PersistentClient(path=self.chroma_db_path)
-        collection_name = "rag_demo"
-        chroma_collection = self.chroma_client.get_or_create_collection(name=collection_name)
+    def _load_vector_document_store(self):
+        """加载向量文档存储和检索索引"""
+        self.chromadb_client = chromadb.PersistentClient(path=self.vector_database_path)
+        document_collection_name = "documents"
+        chroma_document_collection = self.chromadb_client.get_or_create_collection(name=document_collection_name)
         
-        self.vector_store = ChromaVectorStore(chroma_collection=chroma_collection)
-        storage_context = StorageContext.from_defaults(vector_store=self.vector_store)
+        self.vector_document_store = ChromaVectorStore(chroma_collection=chroma_document_collection)
+        vector_storage_context = StorageContext.from_defaults(vector_store=self.vector_document_store)
         
-        self.vector_index = VectorStoreIndex.from_vector_store(
-            self.vector_store,
-            storage_context=storage_context,
-            embed_model=self.embed_model
+        self.vector_search_index = VectorStoreIndex.from_vector_store(
+            self.vector_document_store,
+            storage_context=vector_storage_context,
+            embed_model=self.text_embedding_model
         )
         
-    def _load_bm25_model(self):
-        """加载BM25模型和节点数据"""
-        bm25_file = os.path.join(self.pickle_path, "bm25_model.pkl")
-        nodes_file = os.path.join(self.pickle_path, "nodes_data.pkl")
+    def _load_bm25_keyword_search_model(self):
+        """加载BM25关键词检索模型和文档节点数据"""
+        bm25_model_file_path = os.path.join(self.keyword_models_path, "bm25_model.pkl")
+        document_nodes_file_path = os.path.join(self.keyword_models_path, "nodes_data.pkl")
         
-        with open(bm25_file, 'rb') as f:
-            self.bm25_model = pickle.load(f)
+        with open(bm25_model_file_path, 'rb') as bm25_file:
+            self.bm25_keyword_search_model = pickle.load(bm25_file)
             
-        with open(nodes_file, 'rb') as f:
-            nodes_data = pickle.load(f)
+        with open(document_nodes_file_path, 'rb') as nodes_file:
+            serialized_nodes_data = pickle.load(nodes_file)
             
-        # 重建节点对象
-        self.nodes_data = []
-        for node_data in nodes_data:
-            node = TextNode(
+        # 重新构建文档节点对象
+        self.document_nodes_data = []
+        for node_data in serialized_nodes_data:
+            document_node = TextNode(
                 text=node_data['text'],
                 metadata=node_data['metadata'],
                 id_=node_data['node_id']
             )
-            self.nodes_data.append(node)
+            self.document_nodes_data.append(document_node)
             
-    def search(self, query: str, top_k: int = 9) -> List[Dict[str, Any]]:
-        """执行混合检索 - 与rag_demo.py的检索逻辑保持一致"""
-        if not self.is_available():
+    def search_documents(self, search_query: str, maximum_results: int = 9) -> List[Dict[str, Any]]:
+        """执行混合文档检索 - 结合向量相似度和BM25关键词检索"""
+        if not self.is_document_search_available():
             return []
             
-        self._lazy_load()
+        self._load_document_search_data_lazily()
         
-        if not self._loaded:
+        if not self._is_data_loaded:
             return []
             
         try:
-            # 创建混合检索器 - 参考rag_demo.py的create_hybrid_retriever方法
-            retriever = self._create_hybrid_retriever(similarity_top_k=top_k * 2)
+            # 创建混合文档检索器 - 结合向量和BM25检索
+            hybrid_document_retriever = self._create_hybrid_document_retriever(similarity_top_k=maximum_results * 2)
             
-            # 执行混合检索
-            nodes = retriever.retrieve(query)
+            # 执行混合文档检索
+            retrieved_document_nodes = hybrid_document_retriever.retrieve(search_query)
             
-            # 格式化结果
-            formatted_results = []
-            for node in nodes:
-                # 获取文件路径
-                file_path = node.metadata.get('file_path', '未知路径')
-                filename = os.path.basename(file_path) if file_path != '未知路径' else '未知文件'
+            # 格式化检索结果
+            formatted_search_results = []
+            for document_node in retrieved_document_nodes:
+                # 获取文档文件路径信息
+                document_file_path = document_node.metadata.get('file_path', '未知路径')
+                document_filename = os.path.basename(document_file_path) if document_file_path != '未知路径' else '未知文件'
                 
-                # 获取分数：优先从metadata获取混合分数，否则使用节点原有分数
-                score = 0.0
-                if hasattr(node, 'metadata') and node.metadata and 'hybrid_score' in node.metadata:
-                    score = node.metadata['hybrid_score']
-                    retrieval_source = node.metadata.get('retrieval_source', 'hybrid')
+                # 获取文档相关性分数和检索来源
+                relevance_score = 0.0
+                if hasattr(document_node, 'metadata') and document_node.metadata and 'hybrid_score' in document_node.metadata:
+                    relevance_score = document_node.metadata['hybrid_score']
+                    search_method = document_node.metadata.get('retrieval_source', 'hybrid')
                 else:
-                    score = getattr(node, 'score', 0.0)
-                    retrieval_source = 'vector'
+                    relevance_score = getattr(document_node, 'score', 0.0)
+                    search_method = 'vector'
                 
-                # 确保score是浮点数
+                # 确保相关性分数是有效数值
                 try:
-                    score = float(score) if score is not None else 0.0
-                    if score < 0:
-                        score = 0.0
+                    relevance_score = float(relevance_score) if relevance_score is not None else 0.0
+                    if relevance_score < 0:
+                        relevance_score = 0.0
                 except (ValueError, TypeError):
-                    score = 0.0
+                    relevance_score = 0.0
                 
-                formatted_results.append({
-                    'rank': len(formatted_results) + 1,
-                    'content': node.text.strip(),
-                    'score': score,
-                    'file_path': file_path,
-                    'filename': filename,
-                    'content_length': len(node.text),
-                    'retrieval_source': retrieval_source
+                formatted_search_results.append({
+                    'rank': len(formatted_search_results) + 1,
+                    'content': document_node.text.strip(),
+                    'score': relevance_score,
+                    'file_path': document_file_path,
+                    'filename': document_filename,
+                    'content_length': len(document_node.text),
+                    'retrieval_source': search_method
                 })
             
-            # 按相似度得分排序并限制返回数量
-            formatted_results.sort(key=lambda x: x['score'], reverse=True)
-            formatted_results = formatted_results[:top_k]
+            # 按相关性分数排序并限制返回数量
+            formatted_search_results.sort(key=lambda x: x['score'], reverse=True)
+            final_search_results = formatted_search_results[:maximum_results]
             
-            # 重新分配排名
-            for i, result in enumerate(formatted_results):
-                result['rank'] = i + 1
+            # 重新计算排名
+            for result_index, search_result in enumerate(final_search_results):
+                search_result['rank'] = result_index + 1
                 
-            return formatted_results
+            return final_search_results
             
-        except Exception as e:
-            print(f"❌ 搜索失败: {e}")
+        except Exception as search_error:
+            print(f"❌ 文档检索失败: {search_error}")
             return []
             
-    def _bm25_search(self, query: str, top_k: int) -> List[tuple]:
-        """BM25检索"""
-        if not self.bm25_model or not self.nodes_data:
-            return []
             
-        # 对查询进行分词
-        tokenized_query = list(jieba.cut(query, cut_all=False))
-        
-        # BM25检索
-        scores = self.bm25_model.get_scores(tokenized_query)
-        
-        # 获取top_k结果
-        top_indices = scores.argsort()[-top_k:][::-1]
-        
-        results = []
-        for idx in top_indices:
-            if idx < len(self.nodes_data):
-                node = self.nodes_data[idx]
-                score = float(scores[idx])
-                results.append((node, score, 'bm25'))
-                
-        return results
-        
-    def _fuse_results(self, vector_results, bm25_results, top_k: int) -> List[tuple]:
-        """融合向量检索和BM25检索结果"""
-        all_results = {}
-        
-        # 处理向量检索结果
-        for i, node in enumerate(vector_results):
-            node_key = hash(node.text[:200])
-            rrf_score = 1.0 / (i + 1)  # 倒数排名融合
-            all_results[node_key] = {
-                'node': node,
-                'score': rrf_score,
-                'source': 'vector'
-            }
-            
-        # 处理BM25检索结果
-        for i, (node, bm25_score, source) in enumerate(bm25_results):
-            node_key = hash(node.text[:200])
-            rrf_score = 1.0 / (i + 1)
-            
-            if node_key in all_results:
-                # 合并分数
-                all_results[node_key]['score'] += rrf_score
-                all_results[node_key]['source'] = 'hybrid'
-            else:
-                all_results[node_key] = {
-                    'node': node,
-                    'score': rrf_score,
-                    'source': 'bm25'
-                }
-                
-        # 按融合分数排序
-        sorted_results = sorted(all_results.values(), 
-                              key=lambda x: x['score'], reverse=True)
-        
-        # 转换为返回格式
-        final_results = []
-        for result in sorted_results[:top_k]:
-            final_results.append((
-                result['node'], 
-                result['score'], 
-                result['source']
-            ))
-            
-        return final_results
-            
-    def _create_hybrid_retriever(self, similarity_top_k: int = 10):
-        """创建混合检索器 - 与rag_demo.py的create_hybrid_retriever方法保持一致"""
+    def _create_hybrid_document_retriever(self, similarity_top_k: int = 10):
+        """创建混合文档检索器 - 结合向量相似度和BM25关键词检索"""
         try:
             
-            # 1. 创建向量检索器
-            vector_retriever = VectorIndexRetriever(
-                index=self.vector_index,
+            # 1. 创建向量相似度检索器
+            vector_similarity_retriever = VectorIndexRetriever(
+                index=self.vector_search_index,
                 similarity_top_k=similarity_top_k,
             )
             
-            # 2. 创建BM25检索器（需要所有节点）
-            if not self.nodes_data:
-                print("⚠️ 没有节点可用于BM25检索，仅使用向量检索")
-                return vector_retriever
+            # 2. 创建BM25关键词检索器（需要所有文档节点）
+            if not self.document_nodes_data:
+                print("⚠️ 没有文档节点可用于BM25关键词检索，仅使用向量检索")
+                return vector_similarity_retriever
                 
-            # 准备BM25语料库（中文分词）
-            tokenized_corpus = []
-            for node in self.nodes_data:
-                # 中文分词
-                tokens = list(jieba.cut(node.text, cut_all=False))
-                tokenized_corpus.append(tokens)
+            # 准备BM25关键词检索语料库（中文分词）
+            tokenized_document_corpus = []
+            for document_node in self.document_nodes_data:
+                # 对文档节点进行中文分词
+                document_tokens = list(jieba.cut(document_node.text, cut_all=False))
+                tokenized_document_corpus.append(document_tokens)
             
-            # 创建BM25模型
-            bm25 = BM25Okapi(tokenized_corpus)
+            # 创建BM25关键词检索模型
+            bm25_keyword_model = BM25Okapi(tokenized_document_corpus)
             
-            # 创建自定义BM25检索器
-            class CustomBM25Retriever:
-                def __init__(self, bm25_model, nodes, similarity_top_k=10):
-                    self.bm25 = bm25_model
-                    self.nodes = nodes
-                    self.similarity_top_k = similarity_top_k
+            # 创建自定义BM25关键词检索器
+            class CustomBM25KeywordRetriever:
+                def __init__(self, bm25_keyword_model, document_nodes, similarity_top_k=10):
+                    self.bm25_keyword_search_model = bm25_keyword_model
+                    self.document_nodes = document_nodes
+                    self.maximum_similarity_results = similarity_top_k
                 
-                def retrieve(self, query_str):
-                    # 对查询进行分词
-                    tokenized_query = list(jieba.cut(query_str, cut_all=False))
+                def retrieve(self, search_query_text):
+                    # 对搜索查询进行中文分词
+                    tokenized_search_query = list(jieba.cut(search_query_text, cut_all=False))
                     
-                    # BM25检索
-                    scores = self.bm25.get_scores(tokenized_query)
+                    # 执行BM25关键词检索
+                    keyword_relevance_scores = self.bm25_keyword_search_model.get_scores(tokenized_search_query)
                     
-                    # 获取top_k结果
-                    top_indices = scores.argsort()[-self.similarity_top_k:][::-1]
+                    # 获取最相关的文档索引
+                    most_relevant_indices = keyword_relevance_scores.argsort()[-self.maximum_similarity_results:][::-1]
                     
-                    # 返回节点和分数信息
-                    results = []
-                    for idx in top_indices:
-                        if idx < len(self.nodes):
-                            node = self.nodes[idx]
-                            results.append((node, float(scores[idx])))
+                    # 返回文档节点和相关性分数
+                    keyword_search_results = []
+                    for document_index in most_relevant_indices:
+                        if document_index < len(self.document_nodes):
+                            relevant_document_node = self.document_nodes[document_index]
+                            keyword_search_results.append((relevant_document_node, float(keyword_relevance_scores[document_index])))
                     
-                    return results
+                    return keyword_search_results
             
-            bm25_retriever = CustomBM25Retriever(bm25, self.nodes_data, similarity_top_k)
+            bm25_keyword_retriever = CustomBM25KeywordRetriever(bm25_keyword_model, self.document_nodes_data, similarity_top_k)
             
-            # 3. 创建简化的混合检索器
-            class SimpleHybridRetriever:
-                def __init__(self, vector_retriever, bm25_retriever, similarity_top_k=10):
-                    self.vector_retriever = vector_retriever
-                    self.bm25_retriever = bm25_retriever
-                    self.similarity_top_k = similarity_top_k
+            # 3. 创建简化的混合文档检索器
+            class SimpleHybridDocumentRetriever:
+                def __init__(self, vector_similarity_retriever, bm25_keyword_retriever, similarity_top_k=10):
+                    self.vector_similarity_retriever = vector_similarity_retriever
+                    self.bm25_keyword_retriever = bm25_keyword_retriever
+                    self.maximum_results = similarity_top_k
                 
-                def retrieve(self, query_str):
-                    # 执行向量检索
-                    vector_results = self.vector_retriever.retrieve(query_str)
+                def retrieve(self, search_query_text):
+                    # 执行向量相似度检索
+                    vector_similarity_results = self.vector_similarity_retriever.retrieve(search_query_text)
                     
-                    # 执行BM25检索（返回(node, score)元组）
-                    bm25_results = self.bm25_retriever.retrieve(query_str)
+                    # 执行BM25关键词检索（返回(node, score)元组）
+                    bm25_keyword_results = self.bm25_keyword_retriever.retrieve(search_query_text)
                     
-                    # 合并结果（简单RRF融合）
-                    all_results = {}
+                    # 合并两种检索结果（使用RRF融合算法）
+                    merged_hybrid_results = {}
                     
-                    # 处理向量检索结果 - 使用文本内容作为唯一标识
-                    for i, node in enumerate(vector_results):
-                        # 使用文本内容的哈希值作为唯一标识
-                        node_key = hash(node.text[:200])
-                        rrf_score = 1.0 / (i + 1)  # 倒数排名融合
-                        all_results[node_key] = {
-                            'node': node,
-                            'score': rrf_score,
+                    # 处理向量相似度检索结果 - 使用文档内容作为唯一标识
+                    for result_rank, vector_node in enumerate(vector_similarity_results):
+                        # 使用文档内容的哈希值作为唯一标识
+                        document_key = hash(vector_node.text[:200])
+                        reciprocal_rank_score = 1.0 / (result_rank + 1)  # 倒数排名融合
+                        merged_hybrid_results[document_key] = {
+                            'node': vector_node,
+                            'score': reciprocal_rank_score,
                             'source': 'vector'
                         }
                     
-                    # 处理BM25检索结果（处理(node, score)元组格式）
-                    for i, item in enumerate(bm25_results):
-                        if isinstance(item, tuple):
-                            node, bm25_score = item
+                    # 处理BM25关键词检索结果（处理(node, score)元组格式）
+                    for result_rank, bm25_item in enumerate(bm25_keyword_results):
+                        if isinstance(bm25_item, tuple):
+                            bm25_node, _ = bm25_item
                         else:
-                            node = item
-                            bm25_score = 0.0
+                            bm25_node = bm25_item
                             
-                        # 使用相同的节点标识方法
-                        node_key = hash(node.text[:200])
-                        rrf_score = 1.0 / (i + 1)
+                        # 使用相同的文档节点标识方法
+                        document_key = hash(bm25_node.text[:200])
+                        reciprocal_rank_score = 1.0 / (result_rank + 1)
                         
-                        if node_key in all_results:
-                            # 合并分数 - 这里才是真正的混合检索
-                            all_results[node_key]['score'] += rrf_score
-                            all_results[node_key]['source'] = 'hybrid'
+                        if document_key in merged_hybrid_results:
+                            # 合并两种检索方法的分数 - 混合检索的核心
+                            merged_hybrid_results[document_key]['score'] += reciprocal_rank_score
+                            merged_hybrid_results[document_key]['source'] = 'hybrid'
                         else:
-                            all_results[node_key] = {
-                                'node': node,
-                                'score': rrf_score,
+                            merged_hybrid_results[document_key] = {
+                                'node': bm25_node,
+                                'score': reciprocal_rank_score,
                                 'source': 'bm25'
                             }
                     
-                    # 按融合分数排序
-                    sorted_results = sorted(all_results.values(), 
+                    # 按融合相关性分数排序
+                    sorted_hybrid_results = sorted(merged_hybrid_results.values(), 
                                           key=lambda x: x['score'], reverse=True)
                     
-                    # 返回带有临时分数信息的节点列表
-                    final_results = []
-                    for result in sorted_results[:self.similarity_top_k]:
-                        node = result['node']
-                        # 创建一个临时的结果对象，包含节点和分数信息
-                        class NodeWithScore:
-                            def __init__(self, node, score, source):
-                                self.text = node.text
-                                self.metadata = node.metadata.copy() if node.metadata else {}
-                                self.metadata['hybrid_score'] = score
-                                self.metadata['retrieval_source'] = source
+                    # 返回带有混合分数信息的文档节点列表
+                    final_hybrid_results = []
+                    for hybrid_result in sorted_hybrid_results[:self.maximum_results]:
+                        original_document_node = hybrid_result['node']
+                        # 创建一个带有相关性分数的文档节点对象
+                        class DocumentNodeWithHybridScore:
+                            def __init__(self, document_node, hybrid_score, retrieval_source):
+                                self.text = document_node.text
+                                self.metadata = document_node.metadata.copy() if document_node.metadata else {}
+                                self.metadata['hybrid_score'] = hybrid_score
+                                self.metadata['retrieval_source'] = retrieval_source
                         
-                        result_node = NodeWithScore(node, result['score'], result['source'])
-                        final_results.append(result_node)
+                        enriched_document_node = DocumentNodeWithHybridScore(
+                            original_document_node, 
+                            hybrid_result['score'], 
+                            hybrid_result['source']
+                        )
+                        final_hybrid_results.append(enriched_document_node)
                     
-                    return final_results
+                    return final_hybrid_results
             
-            hybrid_retriever = SimpleHybridRetriever(vector_retriever, bm25_retriever, similarity_top_k)
-            return hybrid_retriever
+            hybrid_document_retriever = SimpleHybridDocumentRetriever(
+                vector_similarity_retriever, 
+                bm25_keyword_retriever, 
+                similarity_top_k
+            )
+            return hybrid_document_retriever
             
-        except Exception as e:
-            print(f"⚠️ 混合检索器创建失败，使用向量检索: {str(e)}")
-            return VectorIndexRetriever(index=self.vector_index, similarity_top_k=similarity_top_k)
+        except Exception as hybrid_retriever_error:
+            print(f"⚠️ 混合文档检索器创建失败，降级使用单纯向量检索: {str(hybrid_retriever_error)}")
+            return VectorIndexRetriever(index=self.vector_search_index, similarity_top_k=similarity_top_k)

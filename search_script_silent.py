@@ -7,7 +7,7 @@ import sys
 import json
 import os
 import io
-from retriever import RAGRetriever
+from retriever import DocumentRetriever
 
 def main():
     if len(sys.argv) < 2:
@@ -30,13 +30,13 @@ def main():
         # 使用相对于插件目录的路径
         script_dir = os.path.dirname(os.path.abspath(__file__))
         data_path = os.path.join(script_dir, 'rag-systemd', 'demo_chroma_db')
-        retriever = RAGRetriever(data_path)
+        document_retriever = DocumentRetriever(data_path)
         
         # 恢复stdout用于输出结果
         sys.stdout = old_stdout
         sys.stderr = old_stderr
         
-        if not retriever.is_available():
+        if not document_retriever.is_document_search_available():
             print(json.dumps({
                 "error": "RAG数据不可用",
                 "message": "请先启动后台服务处理文档"
@@ -47,28 +47,28 @@ def main():
         sys.stdout = io.StringIO()
         sys.stderr = io.StringIO()
         
-        results = retriever.search(query, top_k=top_k)
+        search_results = document_retriever.search_documents(query, maximum_results=top_k)
         
         # 恢复输出
         sys.stdout = old_stdout
         sys.stderr = old_stderr
         
-        # 格式化结果
-        formatted_results = []
-        for result in results:
-            formatted_results.append({
-                "filename": result["filename"],
-                "content": result["content"],
-                "score": result["score"],
-                "file_path": result["file_path"],
-                "retrieval_source": result.get("retrieval_source", "hybrid")
+        # 格式化文档搜索结果
+        formatted_search_results = []
+        for search_result in search_results:
+            formatted_search_results.append({
+                "filename": search_result["filename"],
+                "content": search_result["content"],
+                "score": search_result["score"],
+                "file_path": search_result["file_path"],
+                "retrieval_source": search_result.get("retrieval_source", "hybrid")
             })
         
-        # 返回JSON结果
+        # 返回文档搜索JSON结果
         print(json.dumps({
             "success": True,
-            "results": formatted_results,
-            "total": len(formatted_results)
+            "results": formatted_search_results,
+            "total": len(formatted_search_results)
         }))
         
     except Exception as e:

@@ -1,4 +1,4 @@
-# RAG文档检索插件
+# 文档检索插件
 
 基于向量和关键词的智能文档检索Ulauncher插件。
 
@@ -11,7 +11,7 @@
 
 ## 前置要求
 
-1. **RAG Builder Service**: 必须先安装并运行后台服务
+1. **文档索引服务**: 必须先安装并运行后台服务
 2. **Ollama**: 需要运行Ollama和bge-m3嵌入模型
 3. **Python依赖**: 见requirements.txt
 
@@ -55,24 +55,24 @@ pip install -r requirements.txt
 2. 配置后台服务
    - 修改systemd服务路径：将用户名改为你自己的用户名
    ```ini
-   # 在 rag-systemd/rag.service 文件中修改
-   ExecStart=/home/你的用户名/.local/share/ulauncher/extensions/com.github.497672776.ulauncher-rag-retriever/rag-systemd/start_service.sh
+   # 在 rag-systemd/document-indexer.service 文件中修改
+   ExecStart=/home/你的用户名/.local/share/ulauncher/extensions/com.github.497672776.ulauncher-rag-retriever/rag-systemd/start_document_monitor.sh
    WorkingDirectory=/home/你的用户名/.local/share/ulauncher/extensions/com.github.497672776.ulauncher-rag-retriever/rag-systemd
    ```
 
 3. 启动后台服务
 ```bash
 cd rag-systemd
-sudo cp rag.service /etc/systemd/system/
+sudo cp document-indexer.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl restart rag
-sudo systemctl enable rag
+sudo systemctl restart document-indexer
+sudo systemctl enable document-indexer
 ```
 
 4. 测试后台服务
    - 数据库路径: `~/.local/share/ulauncher/extensions/com.github.497672776.ulauncher-rag-retriever/rag-systemd/data`
    - 放入测试文件到data目录中
-   - 查看日志: `sudo journalctl -u rag -f`
+   - 查看日志: `sudo journalctl -u document-indexer -f`
    - 等待向量库生成完成
 
 5. 重启Ulauncher或重新加载插件
@@ -95,10 +95,10 @@ sudo systemctl enable rag
 
 - **关键词**: 自定义触发关键词 (默认: r)
 - **结果数量**: 每页显示结果数 (默认: 9)
-- **数据路径**: RAG系统数据目录路径
+- **数据路径**: 文档索引系统数据目录路径
 
 ## 故障排除
 
-1. **"RAG数据不可用"**: 检查后台服务是否正在运行
+1. **"文档数据不可用"**: 检查后台服务是否正在运行
 2. **"初始化失败"**: 确认数据目录路径正确
 3. **搜索无结果**: 确认文档已被后台服务处理
