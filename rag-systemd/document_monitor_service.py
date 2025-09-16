@@ -10,8 +10,6 @@ import time
 import signal
 import logging
 import argparse
-from pathlib import Path
-from typing import Optional
 
 # 添加当前目录到Python路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))

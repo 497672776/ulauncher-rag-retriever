@@ -5,7 +5,6 @@ RAG检索插件 - 轻量级版本
 """
 
 import os
-import sys
 import json
 import subprocess
 from pathlib import Path
@@ -15,11 +14,9 @@ from ulauncher.api.client.Extension import Extension
 from ulauncher.api.client.EventListener import EventListener
 from ulauncher.api.shared.event import KeywordQueryEvent, ItemEnterEvent
 from ulauncher.api.shared.item.ExtensionResultItem import ExtensionResultItem
-from ulauncher.api.shared.item.ExtensionSmallResultItem import ExtensionSmallResultItem
 from ulauncher.api.shared.action.RenderResultListAction import RenderResultListAction
 from ulauncher.api.shared.action.HideWindowAction import HideWindowAction
 from ulauncher.api.shared.action.OpenAction import OpenAction
-from ulauncher.api.shared.action.ExtensionCustomAction import ExtensionCustomAction
 
 
 class DocumentSearchExtension(Extension):

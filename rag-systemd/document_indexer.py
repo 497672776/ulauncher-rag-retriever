@@ -12,10 +12,8 @@ from typing import List, Dict, Any
 from pathlib import Path
 
 # LlamaIndex imports
-from llama_index.core import VectorStoreIndex, SimpleDirectoryReader, Document
+from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
 from llama_index.core.node_parser import SimpleNodeParser
-from llama_index.core.retrievers import VectorIndexRetriever
-from llama_index.core.retrievers.fusion_retriever import QueryFusionRetriever
 from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.core import Settings
 
