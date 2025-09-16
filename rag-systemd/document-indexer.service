@@ -1,5 +1,5 @@
 [Unit]
-Description=RAG Test Service - Document Monitoring
+Description=Document Indexer Service - Document Monitoring and Indexing
 Documentation=file:///home/liudecheng/systemd-rag/README.md
 After=network.target ollama.service
 Wants=ollama.service
@@ -9,7 +9,7 @@ Requires=ollama.service
 Type=simple
 User=liudecheng
 Group=liudecheng
-ExecStart=/home/liudecheng/.local/share/ulauncher/extensions/com.github.497672776.ulauncher-rag-retriever/rag-systemd/start_service.sh
+ExecStart=/home/liudecheng/.local/share/ulauncher/extensions/com.github.497672776.ulauncher-rag-retriever/rag-systemd/start_document_monitor.sh
 
 # 工作目录
 WorkingDirectory=/home/liudecheng/.local/share/ulauncher/extensions/com.github.497672776.ulauncher-rag-retriever/rag-systemd

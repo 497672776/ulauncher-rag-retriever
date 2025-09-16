@@ -1,10 +1,10 @@
 #!/bin/bash
 
-# RAG服务启动脚本 - 从配置文件读取Python虚拟环境路径
+# 文档索引服务启动脚本 - 从配置文件读取Python虚拟环境路径
 
 # 获取脚本所在目录
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_FILE="$SCRIPT_DIR/rag_config.json"
+CONFIG_FILE="$SCRIPT_DIR/document_monitor_config.json"
 
 # 检查配置文件是否存在
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -42,5 +42,5 @@ if [ ! -f "$PYTHON_VENV" ]; then
     exit 1
 fi
 
-# 启动RAG服务
-exec "$PYTHON_VENV" "$SCRIPT_DIR/rag_service.py" --config "$CONFIG_FILE"
+# 启动文档索引服务
+exec "$PYTHON_VENV" "$SCRIPT_DIR/document_monitor_service.py" --config "$CONFIG_FILE"

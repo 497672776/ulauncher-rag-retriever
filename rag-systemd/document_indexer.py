@@ -25,12 +25,12 @@ from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.core import StorageContext
 
 
-class RAGDemo:
-    """简化的RAG演示系统"""
+class DocumentIndexingSystem:
+    """文档索引和检索系统"""
     
     def __init__(self, knowledge_base_path: str = "data_test", model_name: str = "bge-m3:latest"):
         """
-        初始化RAG系统
+        初始化文档索引和检索系统
         
         Args:
             knowledge_base_path: 知识库文档目录路径
@@ -39,15 +39,15 @@ class RAGDemo:
         self.knowledge_base_path = knowledge_base_path
         self.model_name = model_name
         self.chroma_db_path = "./demo_chroma_db/chroma_db"
-        self.bm25_cache_path = "./demo_chroma_db/models/bm25_model.pkl"
-        self.nodes_cache_path = "./demo_chroma_db/models/nodes_data.pkl"
+        self.bm25_cache_path = "./demo_chroma_db/keyword_model/bm25_model.pkl"
+        self.nodes_cache_path = "./demo_chroma_db/keyword_model/nodes_data.pkl"
         
         # 确保目录存在
         os.makedirs(self.knowledge_base_path, exist_ok=True)
         os.makedirs(self.chroma_db_path, exist_ok=True)
         os.makedirs(os.path.dirname(self.bm25_cache_path), exist_ok=True)
         
-        print(f"🚀 初始化RAG Demo")
+        print(f"🚀 初始化文档索引和检索系统")
         print(f"📁 知识库路径: {self.knowledge_base_path}")
         print(f"🤖 嵌入模型: {self.model_name}")
         print(f"🗃️ 向量数据库: {self.chroma_db_path}")
@@ -253,155 +253,10 @@ class RAGDemo:
             print(f"⚠️ 更新BM25模型失败: {e}")
             return None, existing_nodes
     
-    def create_hybrid_retriever(self, similarity_top_k: int = 10, num_queries: int = 4):
-        """创建混合检索器：向量检索 + BM25关键词检索"""
-        try:
-            # 1. 创建向量检索器
-            vector_retriever = VectorIndexRetriever(
-                index=self.index,
-                similarity_top_k=similarity_top_k,
-            )
-            
-            # 2. 创建BM25检索器（需要所有节点）
-            if not self.all_nodes:
-                print("⚠️ 没有节点可用于BM25检索，仅使用向量检索")
-                return vector_retriever
-            
-            from rank_bm25 import BM25Okapi
-            import jieba
-            
-            # 准备BM25语料库（中文分词）
-            tokenized_corpus = []
-            for node in self.all_nodes:
-                # 中文分词
-                tokens = list(jieba.cut(node.text, cut_all=False))
-                tokenized_corpus.append(tokens)
-            
-            # 创建BM25模型
-            bm25 = BM25Okapi(tokenized_corpus)
-            
-            # 创建自定义BM25检索器
-            class CustomBM25Retriever:
-                def __init__(self, bm25_model, nodes, similarity_top_k=10):
-                    self.bm25 = bm25_model
-                    self.nodes = nodes
-                    self.similarity_top_k = similarity_top_k
-                
-                def retrieve(self, query_str):
-                    # 对查询进行分词
-                    tokenized_query = list(jieba.cut(query_str, cut_all=False))
-                    
-                    # BM25检索
-                    scores = self.bm25.get_scores(tokenized_query)
-                    
-                    # 获取top_k结果
-                    top_indices = scores.argsort()[-self.similarity_top_k:][::-1]
-                    
-                    # 返回节点和分数信息，不直接修改节点
-                    results = []
-                    for idx in top_indices:
-                        if idx < len(self.nodes):
-                            node = self.nodes[idx]
-                            # 创建节点副本或使用tuple存储分数信息
-                            results.append((node, float(scores[idx])))
-                    
-                    return results
-            
-            bm25_retriever = CustomBM25Retriever(bm25, self.all_nodes, similarity_top_k)
-            
-            # 3. 创建简化的混合检索器
-            class SimpleHybridRetriever:
-                def __init__(self, vector_retriever, bm25_retriever, similarity_top_k=10):
-                    self.vector_retriever = vector_retriever
-                    self.bm25_retriever = bm25_retriever
-                    self.similarity_top_k = similarity_top_k
-                
-                def retrieve(self, query_str):
-                    # 执行向量检索
-                    vector_results = self.vector_retriever.retrieve(query_str)
-                    
-                    # 执行BM25检索（返回(node, score)元组）
-                    bm25_results = self.bm25_retriever.retrieve(query_str)
-                    
-                    # 合并结果（简单RRF融合）
-                    all_results = {}
-                    
-                    # 处理向量检索结果 - 使用文本内容作为唯一标识
-                    for i, node in enumerate(vector_results):
-                        # 使用文本内容的哈希值作为唯一标识，更可靠
-                        node_key = hash(node.text[:200])  # 使用前200字符的哈希避免完全相同的长文本
-                        rrf_score = 1.0 / (i + 1)  # 倒数排名融合
-                        all_results[node_key] = {
-                            'node': node,
-                            'score': rrf_score,
-                            'source': 'vector'
-                        }
-                    
-                    # 处理BM25检索结果（处理(node, score)元组格式）
-                    for i, item in enumerate(bm25_results):
-                        if isinstance(item, tuple):
-                            node, bm25_score = item
-                        else:
-                            node = item
-                            bm25_score = 0.0
-                            
-                        # 使用相同的节点标识方法
-                        node_key = hash(node.text[:200])
-                        rrf_score = 1.0 / (i + 1)
-                        
-                        if node_key in all_results:
-                            # 合并分数 - 这里才是真正的混合检索
-                            all_results[node_key]['score'] += rrf_score
-                            all_results[node_key]['source'] = 'hybrid'
-                            print(f"🔥 发现混合检索节点: {node.text[:50]}...")  # 调试信息
-                        else:
-                            all_results[node_key] = {
-                                'node': node,
-                                'score': rrf_score,
-                                'source': 'bm25'
-                            }
-                    
-                    # 按融合分数排序
-                    sorted_results = sorted(all_results.values(), 
-                                          key=lambda x: x['score'], reverse=True)
-                    
-                    print(f"🔍 检索统计: Vector={len(vector_results)}, BM25={len(bm25_results)}, 总计={len(all_results)}")
-                    
-                    # 统计各类型结果数量
-                    source_count = {'vector': 0, 'bm25': 0, 'hybrid': 0}
-                    for result in sorted_results:
-                        source_count[result['source']] += 1
-                    print(f"📊 结果分布: {source_count}")
-                    
-                    # 返回带有临时分数信息的节点列表
-                    final_results = []
-                    for result in sorted_results[:self.similarity_top_k]:
-                        node = result['node']
-                        # 创建一个临时的结果对象，包含节点和分数信息
-                        class NodeWithScore:
-                            def __init__(self, node, score, source):
-                                self.text = node.text
-                                self.metadata = node.metadata.copy() if node.metadata else {}
-                                self.metadata['hybrid_score'] = score
-                                self.metadata['retrieval_source'] = source
-                        
-                        result_node = NodeWithScore(node, result['score'], result['source'])
-                        final_results.append(result_node)
-                    
-                    return final_results
-            
-            hybrid_retriever = SimpleHybridRetriever(vector_retriever, bm25_retriever, similarity_top_k)
-            
-            print(f"🔍 创建混合检索器: 向量检索 + BM25关键词检索")
-            return hybrid_retriever
-            
-        except Exception as e:
-            print(f"⚠️ 混合检索器创建失败，使用向量检索: {str(e)}")
-            return VectorIndexRetriever(index=self.index, similarity_top_k=similarity_top_k)
         
-    def load_documents(self) -> int:
+    def load_and_index_documents(self) -> int:
         """
-        从knowledge_base_path加载所有文档（带去重检查）
+        从knowledge_base_path加载所有文档并建立向量和BM25索引（带去重检查）
         
         Returns:
             加载的文档数量
@@ -604,84 +459,6 @@ class RAGDemo:
             print(f"❌ 加载文档失败: {e}")
             return 0
     
-    def query(self, question: str, top_k: int = 5) -> List[Dict[str, Any]]:
-        """
-        查询知识库
-        
-        Args:
-            question: 查询问题
-            top_k: 返回结果数量
-            
-        Returns:
-            包含相似文本块和路径的结果列表
-        """
-        if not self.index:
-            print("❌ 请先加载文档")
-            return []
-        
-        print(f"🔍 查询: {question}")
-        start_time = time.time()
-        
-        try:
-            # 创建混合检索器
-            retriever = self.create_hybrid_retriever(similarity_top_k=top_k * 2)  # 获取更多候选
-            
-            # 执行混合检索
-            nodes = retriever.retrieve(question)
-            
-            # 处理结果，正确获取相似度得分
-            results = []
-            for node in nodes:
-                # 获取文件路径
-                file_path = node.metadata.get('file_path', '未知路径')
-                filename = os.path.basename(file_path) if file_path != '未知路径' else '未知文件'
-                
-                # 获取分数：优先从metadata获取混合分数，否则使用节点原有分数
-                score = 0.0
-                if hasattr(node, 'metadata') and node.metadata and 'hybrid_score' in node.metadata:
-                    # 使用混合检索分数
-                    score = node.metadata['hybrid_score']
-                    retrieval_source = node.metadata.get('retrieval_source', 'hybrid')
-                else:
-                    # 使用原始分数
-                    score = getattr(node, 'score', 0.0)
-                    retrieval_source = 'vector'
-                
-                # 确保score是浮点数并且在合理范围内
-                try:
-                    score = float(score) if score is not None else 0.0
-                    if score < 0:
-                        score = 0.0
-                except (ValueError, TypeError):
-                    score = 0.0
-                
-                results.append({
-                    'rank': len(results) + 1,
-                    'content': node.text.strip(),
-                    'score': score,
-                    'file_path': file_path,
-                    'filename': filename,
-                    'content_length': len(node.text),
-                    'retrieval_source': retrieval_source  # 添加检索源信息
-                })
-            
-            # 按相似度得分排序（降序）并限制返回数量
-            results.sort(key=lambda x: x['score'], reverse=True)
-            results = results[:top_k]  # 限制返回数量
-            
-            # 重新分配排名
-            for i, result in enumerate(results):
-                result['rank'] = i + 1
-            
-            search_time = time.time() - start_time
-            
-            print(f"✅ 混合检索完成: {search_time:.3f}秒，找到 {len(results)} 个结果")
-            
-            return results
-            
-        except Exception as e:
-            print(f"❌ 查询失败: {e}")
-            return []
     
     def print_results(self, results: List[Dict[str, Any]], show_content: bool = True):
         """
@@ -695,7 +472,7 @@ class RAGDemo:
             print("🚫 没有找到相关结果")
             return
         
-        print(f"\n📋 查询结果 (共 {len(results)} 条):")
+        print(f"\n📋 文档搜索结果 (共 {len(results)} 条):")
         print("=" * 70)
         
         for result in results:
@@ -826,7 +603,7 @@ class RAGDemo:
             # 重新加载文档（会自动检测并只处理新文件）
             print("🔄 开始处理新文件...")
             old_doc_count = len(self.documents_metadata)  # 记录处理前的文档数
-            new_count = self.load_documents()
+            new_count = self.load_and_index_documents()
             
             # 正确的逻辑：检查是否成功添加了所有新文件
             expected_count = old_doc_count + len(new_files)
@@ -880,42 +657,42 @@ class RAGDemo:
                 print(f"⚠️ 监控过程中出错: {e}")
                 time.sleep(5)  # 出错后等待5秒继续
     
-    def start_monitoring(self) -> None:
+    def start_file_monitoring(self) -> None:
         """
-        启动文件监控
+        启动文件变化监控
         """
         if self._monitoring:
             print("⚠️ 文件监控已在运行中")
             return
         
-        print("🚀 启动文件监控...")
+        print("🚀 启动文件变化监控...")
         self._monitoring = True
         self._monitor_thread = threading.Thread(
             target=self._monitor_directory,
             daemon=True  # 设为守护线程，主程序退出时自动结束
         )
         self._monitor_thread.start()
-        print("✅ 文件监控已启动")
+        print("✅ 文件变化监控已启动")
     
-    def stop_monitoring(self) -> None:
+    def stop_file_monitoring(self) -> None:
         """
-        停止文件监控
+        停止文件变化监控
         """
         if not self._monitoring:
             print("⚠️ 文件监控未运行")
             return
         
-        print("🛑 停止文件监控...")
+        print("🛑 停止文件变化监控...")
         self._monitoring = False
         
         if self._monitor_thread and self._monitor_thread.is_alive():
             self._monitor_thread.join(timeout=10)  # 等待最多10秒
         
-        print("✅ 文件监控已停止")
+        print("✅ 文件变化监控已停止")
     
-    def is_monitoring(self) -> bool:
+    def is_file_monitoring_active(self) -> bool:
         """
-        检查是否正在监控
+        检查文件监控是否处于活跃状态
         
         Returns:
             True if monitoring is active, False otherwise
@@ -928,17 +705,17 @@ def main():
     print("🎯 RAG Demo 演示系统")
     print("=" * 50)
     
-    # 创建RAG系统
-    rag = RAGDemo(knowledge_base_path="data_test")
+    # 创建文档索引和检索系统
+    document_system = DocumentIndexingSystem(knowledge_base_path="data_test")
     
     # 加载文档
-    doc_count = rag.load_documents()
+    doc_count = document_system.load_and_index_documents()
     if doc_count == 0:
         print("❌ 没有加载任何文档，请在data_test目录中放入文档文件")
         return
     
     # 显示系统统计
-    stats = rag.get_stats()
+    stats = document_system.get_stats()
     print(f"\n📊 系统统计:")
     for key, value in stats.items():
         print(f"   - {key}: {value}")
@@ -955,15 +732,15 @@ def main():
                 break
                 
             if query.lower() == 'test':
-                rag.performance_test()
+                document_system.performance_test()
                 continue
                 
             if not query:
                 continue
                 
-            # 执行查询
-            results = rag.query(query, top_k=3)
-            rag.print_results(results, show_content=True)
+            # 执行文档搜索
+            results = document_system.search_documents(query, maximum_results=3)
+            document_system.print_results(results, show_content=True)
             
         except KeyboardInterrupt:
             print("\n👋 再见！")
